@@ -1,5 +1,8 @@
 # Database files - exclude large database dumps and backups
 database_files/
+*.sql
+*.backup
+*.dump
 
 
 # Node modules
