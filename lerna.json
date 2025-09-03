@@ -1,0 +1,9 @@
+{
+  "packages": [
+    "packages/nc-gui",
+    "packages/nc-product-matching",
+    "packages/nocodb",
+    "packages/nocodb-sdk"
+  ],
+  "version": "independent"
+}

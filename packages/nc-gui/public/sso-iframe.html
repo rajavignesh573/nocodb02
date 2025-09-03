@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NocoDB SSO - AI Chatbot Integration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .header h1 {
+            color: #1348ba;
+            margin: 0;
+            font-size: 28px;
+        }
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .iframe-container {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .iframe-container iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+        .token-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        .btn {
+            background: #1348ba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background: #0d3a8a;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 NocoDB SSO Integration</h1>
+            <p>AI Chatbot Authentication via JWT Token</p>
+        </div>
+
+        <div id="status" class="status info">
+            Initializing SSO integration...
+        </div>
+
+        <div id="tokenInfo" class="token-info" style="display: none;">
+            <strong>JWT Token:</strong><br>
+            <span id="tokenDisplay"></span><br><br>
+            <strong>User:</strong><br>
+            <span id="userDisplay"></span><br><br>
+            <strong>Expires:</strong><br>
+            <span id="expiresDisplay"></span>
+        </div>
+
+        <div style="text-align: center; margin: 20px 0;">
+            <button id="generateBtn" class="btn" onclick="generateToken()">Generate New Token</button>
+            <button id="refreshBtn" class="btn" onclick="refreshIframe()" style="display: none;">Refresh Chatbot</button>
+        </div>
+
+        <div id="iframeContainer" class="iframe-container" style="display: none;">
+            <iframe id="chatbotIframe" src="about:blank" title="AI Chatbot"></iframe>
+        </div>
+    </div>
+
+    <script>
+        let currentToken = null;
+        let currentUser = null;
+        let iframeLoaded = false;
+
+        // Configuration
+        const CONFIG = {
+            nocodbUrl: '', // Use relative URLs to avoid CORS
+            chatbotUrl: 'http://localhost:3001', // Your Vercel chatbot URL
+            tokenEndpoint: '/api/proxy/sso/jwt-token' // Use frontend proxy endpoint
+        };
+        
+        // Get the parent window's origin for communication
+        const parentOrigin = window.location.origin;
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is already authenticated in NocoDB
+            checkAuthentication();
+        });
+
+        async function checkAuthentication() {
+            try {
+                updateStatus('Checking authentication status...', 'info');
+                
+                // Request authentication info from parent NocoDB window
+                window.parent.postMessage({
+                    type: 'REQUEST_AUTH_INFO',
+                    source: 'sso-bridge'
+                }, parentOrigin);
+                
+                // Wait for response from parent
+                setTimeout(() => {
+                    updateStatus('Requesting authentication from NocoDB...', 'info');
+                    generateToken();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                updateStatus('Failed to check authentication', 'error');
+            }
+        }
+
+        async function generateToken() {
+            try {
+                updateStatus('Generating JWT token...', 'info');
+                document.getElementById('generateBtn').disabled = true;
+
+                // Try to get authentication info from parent NocoDB window
+                updateStatus('Requesting authentication from parent...', 'info');
+                
+                // Request user info from parent
+                window.parent.postMessage({
+                    type: 'REQUEST_USER_INFO',
+                    source: 'sso-bridge'
+                }, '*');
+                
+                // Wait for response
+                setTimeout(() => {
+                    if (currentToken && currentUser) {
+                        updateStatus('Authentication successful!', 'success');
+                        displayTokenInfo({
+                            token: currentToken,
+                            user: currentUser,
+                            expiresIn: 'Using NocoDB session'
+                        });
+                        loadChatbot();
+                    } else {
+                        updateStatus('Authentication failed - no response from parent', 'error');
+                        document.getElementById('generateBtn').disabled = false;
+                    }
+                }, 2000);
+
+            } catch (error) {
+                console.error('Token generation failed:', error);
+                updateStatus(`Token generation failed: ${error.message}`, 'error');
+                document.getElementById('generateBtn').disabled = false;
+            }
+        }
+
+        function displayTokenInfo(data) {
+            document.getElementById('tokenDisplay').textContent = data.token;
+            document.getElementById('userDisplay').textContent = JSON.stringify(data.user, null, 2);
+            document.getElementById('expiresDisplay').textContent = data.expiresIn;
+            document.getElementById('tokenInfo').style.display = 'block';
+        }
+
+        function loadChatbot() {
+            // Instead of showing in a container, redirect the entire iframe
+            const chatbotUrl = new URL(CONFIG.chatbotUrl);
+            chatbotUrl.searchParams.set('jwt', currentToken);
+            chatbotUrl.searchParams.set('user', JSON.stringify(currentUser));
+            
+            console.log('🚀 Redirecting to AI chatbot with JWT token');
+            
+            // Redirect the entire iframe to the chatbot
+            window.location.href = chatbotUrl.toString();
+        }
+
+        function refreshIframe() {
+            if (currentToken) {
+                loadChatbot();
+                updateStatus('Refreshing chatbot...', 'info');
+            }
+        }
+
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // Listen for messages from parent NocoDB window
+        window.addEventListener('message', function(event) {
+            console.log('Message received:', event.data);
+            
+            // Handle authentication info from parent
+            if (event.data.type === 'AUTH_INFO_RESPONSE') {
+                console.log('Received auth info from parent');
+                // Store cookies for authenticated requests
+                document.cookie = event.data.cookies;
+                updateStatus('Authentication info received from NocoDB', 'success');
+                generateToken();
+            }
+            
+            // Handle user info response from parent
+            if (event.data.type === 'USER_INFO_RESPONSE') {
+                console.log('Received user info from parent:', event.data);
+                if (event.data.success && event.data.user && event.data.token) {
+                    currentUser = event.data.user;
+                    currentToken = event.data.token;
+                    updateStatus('User authentication successful!', 'success');
+                    displayTokenInfo({
+                        token: event.data.token,
+                        user: event.data.user,
+                        expiresIn: 'Using NocoDB session'
+                    });
+                    loadChatbot();
+                } else {
+                    updateStatus(`Authentication failed: ${event.data.error || 'Unknown error'}`, 'error');
+                    document.getElementById('generateBtn').disabled = false;
+                }
+            }
+        });
+        
+        // Listen for messages from chatbot iframe
+        window.addEventListener('message', function(event) {
+            // Verify origin for security
+            if (event.origin !== CONFIG.chatbotUrl) {
+                console.warn('Ignoring message from unauthorized origin:', event.origin);
+                return;
+            }
+
+            console.log('Message from chatbot:', event.data);
+            
+            // Handle different message types
+            if (event.data.type === 'AUTH_REQUEST') {
+                // Chatbot is requesting authentication info
+                event.source.postMessage({
+                    type: 'AUTH_RESPONSE',
+                    token: currentToken,
+                    user: currentUser
+                }, event.origin);
+            }
+        });
+    </script>
+</body>
+</html>
